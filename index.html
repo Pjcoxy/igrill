@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iGrill Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔥</text></svg>">
+<meta name="theme-color" content="#14100d">
+<link rel="manifest" href="manifest.json">
+<script>
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+<style>
+  :root {
+    --bg: #14100d;
+    --panel: #1f1a15;
+    --panel2: #2a231c;
+    --border: #3a3128;
+    --text: #f2e9dd;
+    --muted: #9c8f7e;
+    --accent: #ff7a1a;
+    --accent2: #ffb347;
+    --good: #4caf72;
+    --warn: #e0b23c;
+    --bad: #e05c4c;
+    --p1: #ff7a1a; --p2: #4cc3e0; --p3: #8ee04c; --p4: #d98ef5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  h1 { font-size: 1.2rem; font-weight: 600; letter-spacing: 0.5px; }
+  h1 .flame { color: var(--accent); }
+  .spacer { flex: 1; }
+  button {
+    background: var(--accent); color: #1a1005; border: none;
+    padding: 10px 22px; border-radius: 8px; font-size: 1rem; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  button:hover { background: var(--accent2); }
+  button:disabled { background: var(--border); color: var(--muted); cursor: default; }
+  button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--border); }
+  button.small { padding: 6px 14px; font-size: 0.8rem; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; padding: 8px 16px; font-size: 0.9rem; color: var(--muted);
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bad); }
+  .dot.on { background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .dot.busy { background: var(--warn); animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+  .unit-toggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  }
+  .unit-toggle button {
+    background: var(--panel); color: var(--muted); border-radius: 0; padding: 8px 16px; font-weight: 600;
+  }
+  .unit-toggle button.active { background: var(--accent); color: #1a1005; }
+  .grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 10px; margin-bottom: 10px;
+  }
+  .probe {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 10px 12px; position: relative; overflow: hidden;
+  }
+  .probe::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: var(--pc, var(--accent));
+  }
+  .probe h2 { font-size: 0.95rem; color: var(--muted); font-weight: 600; display:flex; align-items:center; gap:8px;}
+  .probe h2 .swatch { width:10px; height:10px; border-radius:3px; background: var(--pc); display:inline-block;}
+  .temp { font-size: 2.4rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .temp small { font-size: 1.1rem; color: var(--muted); font-weight: 400; }
+  .temp.unplugged { color: var(--muted); font-size: 1.3rem; padding: 10px 0; }
+  .target-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+  .target-row label { font-size: 0.8rem; color: var(--muted); }
+  .target-row input {
+    width: 64px; background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 8px; font-size: 0.95rem;
+  }
+  .target-row select {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 6px 6px; font-size: 0.8rem; max-width: 120px;
+  }
+  .status-line { margin-top: 8px; font-size: 0.8rem; color: var(--muted); min-height: 1.1em; }
+  .status-line.reached { color: var(--good); font-weight: 600; }
+  .probe.alerting { animation: flash 0.8s infinite; }
+  @keyframes flash { 50% { background: #4a2313; } }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 10px 14px; margin-bottom: 10px;
+  }
+  .panel h2 { font-size: 0.9rem; color: var(--muted); margin-bottom: 6px; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  #chart-panel { flex: 1; min-height: 120px; display: flex; flex-direction: column; }
+  #chart-wrap { flex: 1; min-height: 0; }
+  #chart { width: 100%; height: 100%; display: block; }
+  details.panel summary {
+    cursor: pointer; font-size: 0.9rem; color: var(--muted); font-weight: 600;
+    display: flex; align-items: center; gap: 10px; list-style: none;
+  }
+  details.panel summary::before { content: "▸ "; }
+  details[open].panel summary::before { content: "▾ "; }
+  details.panel { margin-bottom: 0; }
+  .meta { display: flex; gap: 20px; flex-wrap: wrap; font-size: 0.9rem; color: var(--muted); }
+  .meta b { color: var(--text); }
+  #log {
+    font-family: Consolas, monospace; font-size: 0.75rem; color: var(--muted);
+    max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  }
+  #log .err { color: var(--bad); }
+  #log .ok { color: var(--good); }
+  .notice {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; font-size: 0.88rem; color: var(--muted); margin-bottom: 20px; line-height: 1.5;
+  }
+  .notice b { color: var(--text); }
+  #alert-banner {
+    display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    background: var(--bad); color: #fff; text-align: center; padding: 12px;
+    font-weight: 700; font-size: 1.1rem; cursor: pointer;
+  }
+  /* ---- night mode: near-black, low glare ---- */
+  body.night {
+    --bg: #000000; --panel: #0b0906; --panel2: #120f0b; --border: #201a14;
+    --text: #a99b87; --muted: #5f564a; --accent: #a34e10; --accent2: #8a5a26;
+    --good: #2e6b49; --warn: #8a6e26; --bad: #7c332a;
+  }
+  body.night #chart { filter: brightness(0.55); }
+  body.night #alert-banner { background: #5a1812; color: #c9b6a8; }
+  #btn-mute.muted { background: var(--bad); color: #fff; }
+  #btn-night.on { background: var(--panel2); border-color: var(--accent); }
+  /* ---- phone layout (Android): allow scrolling, 2-col cards, fixed-height chart ---- */
+  @media (max-width: 700px) {
+    body { height: auto; min-height: 100vh; overflow: auto; padding: 8px; }
+    header { gap: 6px; }
+    h1 { font-size: 1rem; }
+    button { padding: 8px 12px; font-size: 0.9rem; }
+    .pill { padding: 6px 10px; font-size: 0.78rem; }
+    .grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .temp { font-size: 1.9rem; }
+    .target-row input { width: 56px; }
+    .target-row select { max-width: 90px; }
+    #chart-panel { flex: none; }
+    #chart-wrap { height: 220px; flex: none; }
+  }
+</style>
+</head>
+<body>
+<div id="alert-banner" onclick="silenceAlerts()">🔔 TARGET TEMPERATURE REACHED — click to silence</div>
+
+<header>
+  <h1><span class="flame">🔥</span> iGrill 2 Dashboard</h1>
+  <span class="pill"><span id="conn-dot" class="dot"></span><span id="conn-text">Disconnected</span></span>
+  <span class="pill">🔋 <span id="battery">--</span></span>
+  <span class="pill">⏱️ <span id="timer">00:00</span></span>
+  <span class="pill">📶 drops: <span id="drops">0</span> · data <span id="dataage">--</span></span>
+  <div class="spacer"></div>
+  <button id="btn-mute" class="secondary" onclick="toggleMute()" title="Mute/unmute alarm sound">🔊</button>
+  <button id="btn-night" class="secondary" onclick="toggleNight()" title="Night mode — dim everything">🌙</button>
+  <div class="unit-toggle">
+    <button id="btn-f" class="active" onclick="setUnit('F')">°F</button>
+    <button id="btn-c" onclick="setUnit('C')">°C</button>
+  </div>
+  <button id="btn-connect" onclick="connect()">Connect</button>
+  <button id="btn-pick" class="secondary" onclick="connect(true)" title="Open Chrome's device chooser to pick a different device">Change device</button>
+  <button id="btn-diag" class="secondary" onclick="runDiagnostics()" title="Full GATT survey — logs everything the device exposes">Diagnostics</button>
+  <button id="btn-disconnect" class="secondary" onclick="disconnect()" disabled>Disconnect</button>
+</header>
+
+<div class="grid" id="probes"></div>
+
+<div class="panel" id="chart-panel">
+  <h2>Temperature history</h2>
+  <div id="chart-wrap"><canvas id="chart"></canvas></div>
+</div>
+
+<details class="panel">
+  <summary>Device info &amp; debug log
+    <button class="small secondary" onclick="event.preventDefault();copyLog()">Copy log</button>
+    <button class="small secondary" onclick="event.preventDefault();downloadLog()">Download log</button>
+    <button class="small secondary" onclick="event.preventDefault();autoSaveLog()">Auto-save to folder…</button>
+    <button class="small secondary" onclick="event.preventDefault();clearLog()">Clear</button>
+  </summary>
+  <div class="meta" style="margin: 8px 0;">
+    <span>Name: <b id="dev-name">--</b></span>
+    <span>Firmware: <b id="dev-fw">--</b></span>
+    <span>Device reports in: <b id="dev-unit">--</b></span>
+  </div>
+  <div id="log"></div>
+</details>
+
+<script>
+"use strict";
+// ---- iGrill 2 BLE protocol (from open-source igrill implementations) ----
+const AUTH_SERVICE  = "64ac0000-4a4b-4b58-9f37-94d3c52ffdf7";
+const FIRMWARE_CHAR = "64ac0001-4a4b-4b58-9f37-94d3c52ffdf7";
+const APP_CHALLENGE = "64ac0002-4a4b-4b58-9f37-94d3c52ffdf7";
+const DEVICE_CHALLENGE = "64ac0003-4a4b-4b58-9f37-94d3c52ffdf7";
+const DEVICE_RESPONSE  = "64ac0004-4a4b-4b58-9f37-94d3c52ffdf7";
+// Temperature service UUID differs per iGrill model — probe characteristic
+// UUIDs are the same across all of them. (Source: 1mckenna/esp32_iGrill)
+const TEMP_SERVICE_CANDIDATES = [
+  ["ada7590f-2e6d-469e-8f7b-1822b386a5e9", "iGrill v202"],
+  ["06ef0000-2e06-4b79-9e33-fce2c42805ec", "iGrill v2 (classic)"],
+  ["a5c50000-f186-4bd6-97f2-7ebacba0d708", "iGrill v2 (alt)"],
+  ["6e910000-58dc-41c7-943f-518b278cea88", "iGrill v3"],
+  ["63c70000-4a82-4261-95ff-92cf32477861", "iGrill mini"],
+  ["9d610c43-ae1d-41a9-9b09-3c7ecd5c6035", "iGrill mini v2"]
+];
+const ALL_TEMP_SERVICES = TEMP_SERVICE_CANDIDATES.map(x => x[0]);
+const UNITS_CHAR    = "06ef0001-2e06-4b79-9e33-fce2c42805ec"; // 0 = °F, 1 = °C
+const PROBE_CHARS = [
+  "06ef0002-2e06-4b79-9e33-fce2c42805ec",
+  "06ef0004-2e06-4b79-9e33-fce2c42805ec",
+  "06ef0006-2e06-4b79-9e33-fce2c42805ec",
+  "06ef0008-2e06-4b79-9e33-fce2c42805ec"
+];
+
+const PRESETS = [
+  ["Custom", null],
+  ["Beef rare (125°F)", 125], ["Beef med-rare (135°F)", 135], ["Beef medium (145°F)", 145],
+  ["Beef well (160°F)", 160], ["Brisket/Pulled pork (203°F)", 203],
+  ["Pork chops (145°F)", 145], ["Ribs (195°F)", 195],
+  ["Chicken (165°F)", 165], ["Turkey (165°F)", 165],
+  ["Fish (145°F)", 145], ["Lamb (145°F)", 145]
+];
+
+let device = null, server = null;
+let unit = "F";               // display unit
+let deviceUnit = "F";         // unit the iGrill sends raw values in
+let probeState = [null, null, null, null];   // current temp in °F (canonical) or null
+let history = [[], [], [], []];              // [{t, f}]
+let targets = [null, null, null, null];      // high/target alarm, °F canonical
+let alerted = [false, false, false, false];
+let lowTargets = [null, null, null, null];   // low alarm (pit-temp drop), °F canonical
+let lowArmed  = [false, false, false, false];   // low alarm "already fired" latch
+let startTime = null, timerInt = null, pollInt = null, battInt = null;
+let alertLoop = null, audioCtx = null;
+let userDisconnect = false;
+let reconnectAttempts = 0;
+let notifyCount = [0, 0, 0, 0];
+let lastDataTime = 0;               // last time ANY packet arrived
+let probeLast = [0, 0, 0, 0];       // per-probe last packet time (for adaptive polling)
+let dropCount = 0;
+let wakeLock = null;
+let watchdogInt = null;
+let connecting = false;
+let reconnectTimer = null;
+const STALL_MS = 90000;             // no data for this long while "connected" => force reconnect
+                                    // (generous: this firmware only notifies on temp CHANGE)
+
+const $ = id => document.getElementById(id);
+const logLines = [];
+function log(msg, cls) {
+  const line = new Date().toLocaleTimeString() + "." + String(Date.now() % 1000).padStart(3, "0") + "  " + msg;
+  logLines.push(line);
+  if (logLines.length > 800) logLines.shift();
+  const el = $("log");
+  const span = document.createElement("span");
+  if (cls) span.className = cls;
+  span.textContent = line + "\n";
+  el.appendChild(span);
+  while (el.childNodes.length > 800) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+  console.log("[iGrill] " + msg);
+}
+const logErr = (msg, e) => log(msg + (e ? " → " + (e.name || "Error") + ": " + e.message : ""), "err");
+function copyLog() {
+  navigator.clipboard.writeText(sysInfo() + "\n" + logLines.join("\n"))
+    .then(() => log("Log copied to clipboard", "ok"))
+    .catch(() => alert("Copy failed — use Download log instead"));
+}
+function downloadLog() {
+  const blob = new Blob([sysInfo() + "\n" + logLines.join("\n")], { type: "text/plain" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "igrill-debug-log.txt";
+  a.click();
+}
+function clearLog() { logLines.length = 0; $("log").innerHTML = ""; }
+let logDirHandle = null, logSaveInt = null;
+async function autoSaveLog() {
+  if (!window.showDirectoryPicker) { alert("Folder auto-save needs Chrome/Edge."); return; }
+  try {
+    logDirHandle = await showDirectoryPicker({ mode: "readwrite" });
+    const write = async () => {
+      try {
+        const fh = await logDirHandle.getFileHandle("igrill-debug-log.txt", { create: true });
+        const w = await fh.createWritable();
+        await w.write(sysInfo() + "\n" + logLines.join("\n") + "\n[log saved " + new Date().toLocaleTimeString() + "]");
+        await w.close();
+      } catch (e) { logErr("Log auto-save failed", e); clearInterval(logSaveInt); logSaveInt = null; }
+    };
+    await write();
+    clearInterval(logSaveInt);
+    logSaveInt = setInterval(write, 5000);
+    log("Auto-saving log to '" + logDirHandle.name + "\\igrill-debug-log.txt' every 5 s", "ok");
+  } catch (e) { logErr("Auto-save setup cancelled", e); }
+}
+function sysInfo() {
+  return "=== iGrill debug log ===\nUA: " + navigator.userAgent +
+    "\nWeb Bluetooth: " + (!!navigator.bluetooth) +
+    "\nSecure context: " + window.isSecureContext +
+    "\nTime: " + new Date().toISOString() + "\n====================";
+}
+const hex = dv => {
+  const b = [];
+  for (let i = 0; i < dv.byteLength; i++) b.push(dv.getUint8(i).toString(16).padStart(2, "0"));
+  return b.join(" ");
+};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Retry wrapper: Windows BLE stacks often fail transiently ("GATT operation in progress" etc.)
+async function retry(label, fn, attempts = 3, delay = 400) {
+  for (let a = 1; a <= attempts; a++) {
+    // fast-fail: no point retrying GATT ops on a dead link
+    if (label !== "GATT connect" && device && !device.gatt.connected) {
+      throw new DOMException("Link dropped during " + label, "NetworkError");
+    }
+    try {
+      const r = await fn();
+      if (a > 1) log(label + " succeeded on attempt " + a, "ok");
+      return r;
+    } catch (e) {
+      logErr(label + " attempt " + a + "/" + attempts + " failed", e);
+      if (a === attempts) throw e;
+      await sleep(delay);
+    }
+  }
+}
+
+const f2c = f => (f - 32) * 5 / 9;
+const c2f = c => c * 9 / 5 + 32;
+const disp = f => unit === "F" ? Math.round(f) : Math.round(f2c(f));
+
+// ---- build probe cards ----
+const colors = ["var(--p1)", "var(--p2)", "var(--p3)", "var(--p4)"];
+const chartColors = ["#ff7a1a", "#4cc3e0", "#8ee04c", "#d98ef5"];
+for (let i = 0; i < 4; i++) {
+  const d = document.createElement("div");
+  d.className = "probe";
+  d.id = "probe" + i;
+  d.style.setProperty("--pc", colors[i]);
+  d.style.order = 4 + i; // unplugged by default; moves left when a probe activates
+  d.innerHTML = `
+    <h2><span class="swatch"></span>PROBE ${i + 1}</h2>
+    <div class="temp unplugged" id="temp${i}">no probe</div>
+    <div class="target-row">
+      <label>Target ≥</label>
+      <input type="number" id="target${i}" placeholder="--" onchange="targetChanged(${i})">
+      <select id="preset${i}" onchange="presetChanged(${i})"></select>
+    </div>
+    <div class="target-row">
+      <label>Low alarm ≤</label>
+      <input type="number" id="low${i}" placeholder="--" onchange="lowChanged(${i})" title="Alerts the moment temp is at or below this number — great for pit temperature">
+    </div>
+    <div class="status-line" id="status${i}"></div>`;
+  $("probes").appendChild(d);
+  const sel = d.querySelector("select");
+  PRESETS.forEach(([name, f], idx) => {
+    const o = document.createElement("option");
+    o.value = idx; o.textContent = name;
+    sel.appendChild(o);
+  });
+}
+
+// ---- units ----
+function setUnit(u) {
+  unit = u;
+  $("btn-f").classList.toggle("active", u === "F");
+  $("btn-c").classList.toggle("active", u === "C");
+  for (let i = 0; i < 4; i++) {
+    if (targets[i] !== null) $("target" + i).value = disp(targets[i]);
+    if (lowTargets[i] !== null) $("low" + i).value = disp(lowTargets[i]);
+    renderProbe(i);
+  }
+  drawChart();
+}
+
+function targetChanged(i) {
+  const v = parseFloat($("target" + i).value);
+  if (isNaN(v)) { targets[i] = null; }
+  else { targets[i] = unit === "F" ? v : c2f(v); }
+  alerted[i] = false;
+  $("preset" + i).value = 0;
+  if (probeState[i] !== null) checkAlert(i, probeState[i]); // fire immediately if already at/past target
+  renderProbe(i);
+}
+
+function lowChanged(i) {
+  const v = parseFloat($("low" + i).value);
+  if (isNaN(v)) { lowTargets[i] = null; }
+  else { lowTargets[i] = unit === "F" ? v : c2f(v); }
+  lowArmed[i] = false;
+  log("Probe " + (i + 1) + " low alarm " + (lowTargets[i] === null ? "cleared" : "set to " + disp(lowTargets[i]) + "°" + unit));
+  if (probeState[i] !== null) checkAlert(i, probeState[i]); // fire immediately if already at/below
+  renderProbe(i);
+}
+
+function presetChanged(i) {
+  const idx = +$("preset" + i).value;
+  const f = PRESETS[idx][1];
+  if (f !== null) {
+    targets[i] = f;
+    $("target" + i).value = disp(f);
+    alerted[i] = false;
+    renderProbe(i);
+  }
+}
+
+// ---- connection ----
+// Find a previously-granted device so Connect can skip Chrome's chooser.
+async function getRememberedDevice() {
+  if (!navigator.bluetooth.getDevices) return null;
+  try {
+    const devs = await navigator.bluetooth.getDevices();
+    if (devs.length) log("Remembered devices: " + devs.map(d => d.name || "(unnamed)").join(", "));
+    return devs.find(d => (d.name || "").toLowerCase().includes("igrill")) || devs[0] || null;
+  } catch (e) { logErr("getDevices failed (non-fatal)", e); return null; }
+}
+
+function adoptDevice(d) {
+  device = d;
+  if (!device.__listening) {
+    device.__listening = true;
+    device.addEventListener("gattserverdisconnected", onDisconnected);
+  }
+}
+
+async function connect(forcePicker) {
+  if (!navigator.bluetooth) {
+    alert("This browser doesn't support Web Bluetooth. Please use Chrome or Edge.");
+    return;
+  }
+  if (connecting) { log("Connect already in progress — ignoring extra click"); return; }
+  clearTimeout(reconnectTimer);
+  connecting = true;
+  try {
+    if (navigator.bluetooth.getAvailability) {
+      const avail = await navigator.bluetooth.getAvailability();
+      log("Bluetooth adapter available: " + avail);
+      if (!avail) { logErr("No Bluetooth adapter available — is laptop Bluetooth on?"); }
+    }
+
+    // Reuse the remembered device — no chooser popup after the first grant.
+    if (!forcePicker) {
+      const d = await getRememberedDevice();
+      if (d) {
+        log("Reconnecting to remembered device '" + (d.name || "(unnamed)") + "' — no chooser needed", "ok");
+        adoptDevice(d);
+        reconnectAttempts = 0;
+        userDisconnect = false;
+        setConn("busy", "Connecting…");
+        await setup();
+        return;
+      }
+      log("No remembered device — opening Chrome's device chooser (one-time)");
+    }
+
+    setConn("busy", "Choosing device…");
+    log("Opening device picker…");
+    const d = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [AUTH_SERVICE] }, { namePrefix: "iGrill" }],
+      optionalServices: [AUTH_SERVICE, ...ALL_TEMP_SERVICES, "battery_service", "generic_access", "device_information"]
+    });
+    log("Picked device: name='" + (d.name || "(none)") + "' id=" + d.id);
+    adoptDevice(d);
+    reconnectAttempts = 0;
+    userDisconnect = false;
+    await setup();
+  } catch (e) {
+    logErr("Connect failed", e);
+    setConn("off", "Disconnected");
+  } finally {
+    connecting = false;
+  }
+}
+
+async function setup() {
+  setConn("busy", "Connecting…");
+  log("[1/6] Connecting GATT…");
+  server = await retry("GATT connect", () => device.gatt.connect(), 3, 800);
+  log("[1/6] GATT connected", "ok");
+  $("dev-name").textContent = device.name || "iGrill";
+
+  // Give the Windows stack a moment before service discovery — connecting and
+  // immediately hammering GATT is a common cause of instant drops.
+  await sleep(800);
+
+  // --- authenticate (challenge/response; key is effectively null) ---
+  // NOTE: deliberately minimal GATT traffic before/after auth — the iGrill
+  // firmware is known to drop the link when hit with heavy discovery traffic
+  // right after the handshake.
+  let auth = null;
+  let authOk = false;
+  let skipAuth = false;
+  try { skipAuth = localStorage.getItem("igrill_noauth") === "1"; } catch (e) { /* ignore */ }
+  if (skipAuth) {
+    log("[3/6] Skipping security handshake — previously confirmed unnecessary for this device", "ok");
+  } else {
+  log("[3/6] Authenticating…");
+  setConn("busy", "Authenticating…");
+  auth = await retry("Get auth service", () => server.getPrimaryService(AUTH_SERVICE));
+  const appCh = await retry("Get APP_CHALLENGE char", () => auth.getCharacteristic(APP_CHALLENGE));
+  log("[3/6] Writing 16-byte zero challenge…");
+  await retry("Write app challenge", async () => {
+    try { await appCh.writeValueWithResponse(new Uint8Array(16)); }
+    catch (e) {
+      log("writeValueWithResponse failed (" + e.name + "), trying writeValueWithoutResponse…");
+      await appCh.writeValueWithoutResponse(new Uint8Array(16));
+    }
+  });
+  const devCh = await retry("Get DEVICE_CHALLENGE char", () => auth.getCharacteristic(DEVICE_CHALLENGE));
+  log("[3/6] Reading device challenge… (encrypted — needs a Windows pairing/bond)");
+  try {
+    // Long, patient retries: on Windows this read triggers OS-level pairing.
+    // 'Connection already in progress' means the bond isn't ready yet — give
+    // Windows time, and give the user time to click any pairing prompt.
+    const challenge = await retry("Read device challenge", () => devCh.readValue(), 2, 1500);
+    log("[3/6] Device challenge (" + challenge.byteLength + " bytes): " + hex(challenge));
+    const devResp = await retry("Get DEVICE_RESPONSE char", () => auth.getCharacteristic(DEVICE_RESPONSE));
+    await retry("Write device response", async () => {
+      try { await devResp.writeValueWithResponse(challenge.buffer); }
+      catch (e) {
+        log("writeValueWithResponse failed (" + e.name + "), trying writeValueWithoutResponse…");
+        await devResp.writeValueWithoutResponse(challenge.buffer);
+      }
+    });
+    authOk = true;
+    log("[3/6] Authenticated ✓", "ok");
+  } catch (e) {
+    if (e.message && e.message.includes("in progress")) {
+      logErr("⚠️ Security handshake blocked — the iGrill has no working bond with Windows.");
+    } else {
+      logErr("⚠️ Security handshake failed", e);
+    }
+    logErr("→ Trying EXPERIMENTAL no-auth mode: subscribing to probes WITHOUT the handshake. Some iGrill firmware streams anyway — watch the log…");
+  }
+  } // end skipAuth else
+  await sleep(300);
+
+  // --- temperature service: model-specific UUID, try each known one ---
+  log("[4/6] Finding temperature service (model detection)…");
+  let temp = null;
+  for (const [uuid, label] of TEMP_SERVICE_CANDIDATES) {
+    try {
+      temp = await server.getPrimaryService(uuid);
+      log("[4/6] ✓ Model detected: " + label + " (service " + uuid.slice(0, 8) + "…)", "ok");
+      break;
+    } catch (e) { log("[4/6]   not " + label); }
+  }
+  if (!temp) {
+    logErr("No temperature service visible. MOST LIKELY CAUSE: this page's Bluetooth permission was granted before V202 support was added.");
+    logErr("→ FIX: click the 'Change device' button and pick the iGrill again — that refreshes the permission. One time only.");
+    throw new Error("Temperature service not accessible — use 'Change device' once to refresh permissions");
+  }
+
+  try {
+    const u = await temp.getCharacteristic(UNITS_CHAR);
+    const uv = await u.readValue();
+    deviceUnit = uv.getUint8(0) === 1 ? "C" : "F";
+    $("dev-unit").textContent = "°" + deviceUnit;
+    log("Device unit: °" + deviceUnit + " (raw " + hex(uv) + ")");
+  } catch (e) { logErr("Couldn't read device units, assuming °F", e); }
+
+  log("[5/6] Subscribing to probes… (notification-driven — this firmware rejects direct reads)");
+  const probeChars = [];
+  for (let i = 0; i < 4; i++) {
+    let c = null;
+    try { c = await temp.getCharacteristic(PROBE_CHARS[i]); }
+    catch (e) { logErr("Probe " + (i + 1) + " characteristic missing", e); probeChars.push(null); continue; }
+    probeChars.push(c);
+    c.addEventListener("characteristicvaluechanged", ev => handleTemp(i, ev.target.value, "notify"));
+    try {
+      await retry("Probe " + (i + 1) + " startNotifications", () => c.startNotifications(), 2, 300);
+      log("Probe " + (i + 1) + ": notifications on", "ok");
+    } catch (e) {
+      logErr("Probe " + (i + 1) + ": notifications unavailable", e);
+    }
+    // Initial read is best-effort: this firmware usually refuses reads, and
+    // notifications only fire on CHANGE — an idle probe can take a minute to show.
+    try {
+      const v = await c.readValue();
+      log("Probe " + (i + 1) + " initial read: " + hex(v));
+      handleTemp(i, v, "read");
+    } catch (e) {
+      log("Probe " + (i + 1) + ": initial read refused (normal on this firmware) — waiting for notifications");
+    }
+    await sleep(250);
+  }
+  // Verdict for no-auth mode: did data actually flow?
+  if (!authOk && !skipAuth) {
+    const setupMark = Date.now();
+    setTimeout(() => {
+      if (device && device.gatt.connected) {
+        if (lastDataTime > setupMark) {
+          log("✅ NO-AUTH MODE WORKS on this firmware — data is flowing without the handshake!", "ok");
+          try { localStorage.setItem("igrill_noauth", "1"); log("Remembered: future connects skip the handshake entirely", "ok"); } catch (e) { /* ignore */ }
+        } else {
+          logErr("❌ No-auth mode: connected but no data after 15 s — this firmware enforces the handshake. A working Windows bond is required.");
+        }
+      }
+    }, 15000);
+  }
+
+  // Adaptive polling backup: ONLY read a probe if its notifications have gone
+  // quiet — constant polling of all 4 chars stresses the flaky iGrill firmware.
+  clearInterval(pollInt);
+  pollInt = setInterval(async () => {
+    if (!device || !device.gatt.connected) return;
+    const now = Date.now();
+    for (let i = 0; i < 4; i++) {
+      if (probeChars[i] && now - probeLast[i] > 12000) {
+        try { handleTemp(i, await probeChars[i].readValue(), "poll"); } catch (e) { /* ignore */ }
+        await sleep(200);
+      }
+    }
+  }, 6000);
+
+  // --- battery + firmware: deferred 10 s so the fragile post-auth window stays quiet ---
+  log("[6/6] Battery/firmware deferred 10 s…");
+  setTimeout(async () => {
+    if (!device || !device.gatt.connected) return;
+    try {
+      if (!auth) auth = await server.getPrimaryService(AUTH_SERVICE);
+      const fw = await auth.getCharacteristic(FIRMWARE_CHAR);
+      const v = await fw.readValue();
+      const s = new TextDecoder().decode(v.buffer).replace(/\0/g, "").trim();
+      $("dev-fw").textContent = s || "--";
+      log("Firmware: " + (s || "(empty)"));
+    } catch (e) { logErr("Firmware read failed (non-fatal)", e); }
+    try {
+      const bs = await server.getPrimaryService("battery_service");
+      const bc = await bs.getCharacteristic("battery_level");
+      const readBatt = async () => {
+        if (!device || !device.gatt.connected) return;
+        try {
+          const v = await bc.readValue();
+          const pct = v.getUint8(0);
+          $("battery").textContent = pct + "%";
+          if (pct <= 25) log("⚠️ Battery at " + pct + "% — weak batteries are the #1 cause of iGrill disconnects!", "err");
+        } catch (e) { /* ignore */ }
+      };
+      // this firmware often refuses reads but happily notifies
+      bc.addEventListener("characteristicvaluechanged", ev => {
+        $("battery").textContent = ev.target.value.getUint8(0) + "%";
+      });
+      try { await bc.startNotifications(); log("Battery notifications on", "ok"); } catch (e) { /* ignore */ }
+      await readBatt();
+      log("Battery: " + $("battery").textContent, "ok");
+      clearInterval(battInt);
+      battInt = setInterval(readBatt, 120000);
+    } catch (e) { logErr("Battery service not available (non-fatal)", e); }
+  }, 10000);
+
+  // --- stall watchdog: iGrill firmware sometimes keeps the link "up" but goes
+  // silent, or drops without an event. If no data for STALL_MS, force-recycle. ---
+  lastDataTime = Date.now();
+  clearInterval(watchdogInt);
+  watchdogInt = setInterval(() => {
+    if (!device || userDisconnect) return;
+    if (device.gatt.connected && Date.now() - lastDataTime > STALL_MS) {
+      logErr("Watchdog: no data for " + Math.round((Date.now() - lastDataTime) / 1000) + " s — forcing reconnect");
+      try { device.gatt.disconnect(); } catch (e) { onDisconnected(); }
+    }
+  }, 5000);
+
+  // --- keep the laptop screen (and Bluetooth) awake during the cook ---
+  try {
+    if (navigator.wakeLock && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", () => { wakeLock = null; });
+      log("Screen wake-lock acquired (laptop won't sleep mid-cook)", "ok");
+    }
+  } catch (e) { logErr("Wake-lock unavailable (non-fatal)", e); }
+
+  // timer
+  ensureTimer();
+
+  userDisconnect = false;
+  reconnectAttempts = 0;
+  setConn("on", "Connected");
+  $("btn-connect").disabled = true;
+  $("btn-disconnect").disabled = false;
+  log("=== Setup complete — receiving data ===", "ok");
+}
+
+function onDisconnected() {
+  clearInterval(pollInt);
+  setConn("off", "Disconnected");
+  $("btn-connect").disabled = false;
+  $("btn-disconnect").disabled = true;
+  dropCount++;
+  $("drops").textContent = dropCount;
+  logErr("!! Device disconnected (drop #" + dropCount + ", notify counts: " + notifyCount.join("/") + ")");
+  if (userDisconnect || !device) return;
+
+  // NEVER give up: session data survives, so each reconnect just resumes the graph.
+  reconnectAttempts++;
+  const wait = Math.min(2 + reconnectAttempts, 20);
+  log("Auto-reconnect #" + reconnectAttempts + " in " + wait + " s… (will keep trying)");
+  setConn("busy", "Reconnecting…");
+
+  // If supported, listen for the iGrill's advertisements and reconnect the
+  // moment it reappears — much faster than blind timed retries.
+  if (device.watchAdvertisements && !device.__advWatched) {
+    try {
+      device.__advWatched = true;
+      device.addEventListener("advertisementreceived", () => {
+        if (!connecting && !device.gatt.connected && !userDisconnect) {
+          log("iGrill is advertising again — reconnecting now", "ok");
+          attemptReconnect();
+        }
+      });
+      device.watchAdvertisements().then(() => log("Watching for iGrill advertisements…"))
+        .catch(e => logErr("watchAdvertisements unavailable (will use timed retries)", e));
+    } catch (e) { logErr("watchAdvertisements setup failed (non-fatal)", e); }
+  }
+
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(attemptReconnect, wait * 1000);
+}
+
+async function attemptReconnect() {
+  if (connecting || userDisconnect || (device && device.gatt.connected)) return;
+  connecting = true;
+  try { await setup(); }
+  catch (e) { logErr("Reconnect failed", e); setTimeout(onDisconnected, 100); }
+  finally { connecting = false; }
+}
+
+function disconnect() {
+  userDisconnect = true;
+  silenceAlerts();
+  clearInterval(watchdogInt);
+  if (wakeLock) { try { wakeLock.release(); } catch (e) {} wakeLock = null; }
+  log("User requested disconnect");
+  if (device && device.gatt.connected) device.gatt.disconnect();
+}
+
+function setConn(state, text) {
+  $("conn-dot").className = "dot" + (state === "on" ? " on" : state === "busy" ? " busy" : "");
+  $("conn-text").textContent = text;
+}
+
+// ---- temperature handling ----
+function handleTemp(i, dv, source) {
+  if (!dv || dv.byteLength < 2) { log("Probe " + (i + 1) + ": short packet (" + (dv ? dv.byteLength : 0) + " bytes)"); return; }
+  lastDataTime = Date.now();
+  probeLast[i] = lastDataTime;
+  if (source === "notify") {
+    notifyCount[i]++;
+    if (notifyCount[i] <= 3) log("Probe " + (i + 1) + " notify #" + notifyCount[i] + ": " + hex(dv));
+  }
+  const hi = dv.getUint8(1);
+  if (hi === 248) { // 0xF8 = probe unplugged
+    if (probeState[i] !== null) log("Probe " + (i + 1) + ": unplugged");
+    probeState[i] = null;
+    renderProbe(i);
+    return;
+  }
+  let raw = dv.getInt16(0, true); // little-endian
+  const f = deviceUnit === "C" ? c2f(raw) : raw;
+  if (probeState[i] === null) log("Probe " + (i + 1) + ": plugged in, raw=" + raw + " °" + deviceUnit, "ok");
+  probeState[i] = f;
+  const now = Date.now();
+  const h = history[i];
+  if (!h.length || now - h[h.length - 1].t > 4000) {
+    h.push({ t: now, f });
+    if (h.length > 3600) h.shift();
+  }
+  checkAlert(i, f);
+  renderProbe(i);
+  drawChart();
+}
+
+function renderProbe(i) {
+  const el = $("temp" + i), st = $("status" + i);
+  // active probes first (left), unplugged ones pushed right
+  $("probe" + i).style.order = probeState[i] === null ? 4 + i : i;
+  if (probeState[i] === null) {
+    el.className = "temp unplugged";
+    el.textContent = "no probe";
+    st.textContent = "";
+    st.className = "status-line";
+    $("probe" + i).classList.remove("alerting");
+    return;
+  }
+  el.className = "temp";
+  el.innerHTML = disp(probeState[i]) + "<small>°" + unit + "</small>";
+  if (targets[i] !== null) {
+    const delta = targets[i] - probeState[i];
+    if (delta <= 0) {
+      st.textContent = "✓ Target reached!";
+      st.className = "status-line reached";
+    } else {
+      const du = unit === "F" ? Math.round(delta) : Math.round(delta * 5 / 9);
+      st.textContent = du + "°" + unit + " to go";
+      st.className = "status-line";
+    }
+  } else {
+    st.textContent = "";
+    st.className = "status-line";
+  }
+}
+
+// ---- alerts ----
+function fireAlarm(i, msg) {
+  $("probe" + i).classList.add("alerting");
+  $("alert-banner").style.display = "block";
+  startBeeping();
+  try {
+    if (window.Notification && Notification.permission === "granted") {
+      new Notification("iGrill: " + msg);
+    }
+  } catch (e) { /* ignore */ }
+  log("🔔 " + msg);
+}
+
+function checkAlert(i, f) {
+  // high / target alarm
+  if (targets[i] !== null && !alerted[i] && f >= targets[i]) {
+    alerted[i] = true;
+    fireAlarm(i, "Probe " + (i + 1) + " reached " + disp(targets[i]) + "°" + unit + "!");
+  }
+  // low alarm: fires the moment temp is AT or below the exact number entered;
+  // re-arms automatically once temp recovers above it
+  if (lowTargets[i] !== null) {
+    if (f <= lowTargets[i] && !lowArmed[i]) {
+      lowArmed[i] = true; // = "already fired"
+      fireAlarm(i, "Probe " + (i + 1) + " at/below " + disp(lowTargets[i]) + "°" + unit + "! (" + disp(f) + "°" + unit + ")");
+    } else if (f > lowTargets[i]) {
+      lowArmed[i] = false; // recovered — can fire again on next drop
+    }
+  }
+}
+
+let muted = false, night = false;
+function toggleMute() {
+  muted = !muted;
+  $("btn-mute").textContent = muted ? "🔇" : "🔊";
+  $("btn-mute").classList.toggle("muted", muted);
+  if (muted && alertLoop) { clearInterval(alertLoop); alertLoop = null; }
+  log(muted ? "Alarm sound MUTED (banner/flash still show)" : "Alarm sound on");
+  saveSession();
+}
+function toggleNight() {
+  night = !night;
+  document.body.classList.toggle("night", night);
+  $("btn-night").classList.toggle("on", night);
+  $("btn-night").textContent = night ? "☀️" : "🌙";
+  drawChart();
+  saveSession();
+}
+
+function startBeeping() {
+  if (muted) return;
+  if (alertLoop) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const beep = () => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = "square"; o.frequency.value = 880;
+    g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 0.4);
+  };
+  beep();
+  alertLoop = setInterval(beep, 1500);
+}
+
+function silenceAlerts() {
+  clearInterval(alertLoop);
+  alertLoop = null;
+  $("alert-banner").style.display = "none";
+  for (let i = 0; i < 4; i++) $("probe" + i).classList.remove("alerting");
+}
+
+// ---- chart ----
+const canvas = $("chart"), ctx = canvas.getContext("2d");
+function drawChart() {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const W = rect.width, H = rect.height || 200, padL = 44, padR = 10, padT = 10, padB = 24;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000; // last hour
+  let pts = [];
+  history.forEach(h => pts = pts.concat(h.filter(p => now - p.t < windowMs)));
+  if (!pts.length) {
+    ctx.fillStyle = "#9c8f7e";
+    ctx.font = "14px system-ui";
+    ctx.fillText("Waiting for data…", padL, H / 2);
+    return;
+  }
+  const vals = pts.map(p => unit === "F" ? p.f : f2c(p.f));
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  targets.forEach(t => { if (t !== null) { const tv = unit === "F" ? t : f2c(t); lo = Math.min(lo, tv); hi = Math.max(hi, tv); } });
+  lowTargets.forEach(t => { if (t !== null) { const tv = unit === "F" ? t : f2c(t); lo = Math.min(lo, tv); hi = Math.max(hi, tv); } });
+  const span = Math.max(hi - lo, 10);
+  lo -= span * 0.1; hi += span * 0.1;
+
+  const x = t => padL + (W - padL - padR) * (1 - (now - t) / windowMs);
+  const y = v => padT + (H - padT - padB) * (1 - (v - lo) / (hi - lo));
+
+  ctx.strokeStyle = "#3a3128"; ctx.fillStyle = "#9c8f7e"; ctx.font = "11px system-ui";
+  ctx.lineWidth = 1;
+  const steps = 5;
+  for (let s = 0; s <= steps; s++) {
+    const v = lo + (hi - lo) * s / steps;
+    const yy = y(v);
+    ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke();
+    ctx.fillText(Math.round(v) + "°", 6, yy + 4);
+  }
+  for (let m = 0; m <= 60; m += 15) {
+    const t = now - m * 60000;
+    const xx = x(t);
+    ctx.fillText(m === 0 ? "now" : "-" + m + "m", xx - 12, H - 6);
+  }
+  // target lines: long dashes. Low-alarm lines: short dots, slightly dimmed.
+  targets.forEach((t, i) => {
+    if (t === null) return;
+    const tv = unit === "F" ? t : f2c(t);
+    ctx.strokeStyle = chartColors[i];
+    ctx.globalAlpha = 1;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(padL, y(tv)); ctx.lineTo(W - padR, y(tv)); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+  lowTargets.forEach((t, i) => {
+    if (t === null) return;
+    const tv = unit === "F" ? t : f2c(t);
+    ctx.strokeStyle = chartColors[i];
+    ctx.globalAlpha = 0.55;
+    ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(padL, y(tv)); ctx.lineTo(W - padR, y(tv)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  });
+  history.forEach((h, i) => {
+    const seg = h.filter(p => now - p.t < windowMs);
+    if (seg.length < 2) return;
+    ctx.strokeStyle = chartColors[i];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    seg.forEach((p, j) => {
+      const v = unit === "F" ? p.f : f2c(p.f);
+      j ? ctx.lineTo(x(p.t), y(v)) : ctx.moveTo(x(p.t), y(v));
+    });
+    ctx.stroke();
+  });
+}
+setInterval(drawChart, 15000);
+window.addEventListener("resize", drawChart);
+drawChart();
+
+// data-age indicator (green metric for "is it alive right now")
+setInterval(() => {
+  if (!lastDataTime) { $("dataage").textContent = "--"; return; }
+  const s = Math.round((Date.now() - lastDataTime) / 1000);
+  $("dataage").textContent = s < 2 ? "live" : s + "s ago";
+}, 1000);
+
+// re-acquire the wake lock when the tab becomes visible again
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && !wakeLock && device && device.gatt.connected && navigator.wakeLock) {
+    try { wakeLock = await navigator.wakeLock.request("screen"); } catch (e) { /* ignore */ }
+  }
+});
+
+window.addEventListener("error", e => logErr("Uncaught error", e.error || { name: "Error", message: e.message }));
+window.addEventListener("unhandledrejection", e => logErr("Unhandled promise rejection", e.reason || { name: "Error", message: String(e.reason) }));
+log(sysInfo());
+
+// ---- session persistence: graph/targets/timer survive reloads & restarts ----
+function ensureTimer() {
+  if (!startTime) startTime = Date.now();
+  if (!timerInt) {
+    timerInt = setInterval(() => {
+      const s = Math.floor((Date.now() - startTime) / 1000);
+      const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+      $("timer").textContent = (h ? h + ":" : "") +
+        String(m).padStart(2, "0") + ":" + String(ss).padStart(2, "0");
+    }, 1000);
+  }
+}
+
+function saveSession() {
+  try {
+    localStorage.setItem("igrill_session", JSON.stringify({
+      history: history.map(h => h.slice(-1200)), // cap stored points per probe
+      probeState, targets, lowTargets, unit, startTime, muted, night, savedAt: Date.now()
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function loadSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem("igrill_session"));
+    if (!s || Date.now() - s.savedAt > 12 * 3600 * 1000) return; // ignore sessions older than 12 h
+    if (Array.isArray(s.history) && s.history.length === 4) history = s.history;
+    if (Array.isArray(s.probeState)) probeState = s.probeState; // show last-known temps immediately
+    if (Array.isArray(s.targets)) targets = s.targets;
+    if (Array.isArray(s.lowTargets)) lowTargets = s.lowTargets;
+    if (s.startTime) { startTime = s.startTime; ensureTimer(); }
+    if (s.unit === "C" || s.unit === "F") setUnit(s.unit);
+    if (s.muted) { muted = true; $("btn-mute").textContent = "🔇"; $("btn-mute").classList.add("muted"); }
+    if (s.night) { night = true; document.body.classList.add("night"); $("btn-night").classList.add("on"); $("btn-night").textContent = "☀️"; }
+    for (let i = 0; i < 4; i++) {
+      if (targets[i] !== null) $("target" + i).value = disp(targets[i]);
+      if (lowTargets[i] !== null) $("low" + i).value = disp(lowTargets[i]);
+      renderProbe(i);
+    }
+    log("Restored previous session: graph history, alarms, cook timer", "ok");
+    drawChart();
+  } catch (e) { /* ignore */ }
+}
+setInterval(saveSession, 10000);
+window.addEventListener("beforeunload", saveSession);
+loadSession();
+
+// ---- full GATT survey: logs everything the device exposes and what's readable ----
+async function runDiagnostics() {
+  try {
+    log("======== DIAGNOSTICS START ========");
+    if (!device) {
+      const d = await getRememberedDevice();
+      if (d) { adoptDevice(d); }
+      else {
+        const p = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [AUTH_SERVICE] }, { namePrefix: "iGrill" }],
+          optionalServices: [AUTH_SERVICE, ...ALL_TEMP_SERVICES, "battery_service", "generic_access", "device_information"]
+        });
+        adoptDevice(p);
+      }
+    }
+    userDisconnect = true; // suppress auto-reconnect while surveying
+    if (!device.gatt.connected) {
+      log("DIAG: connecting GATT…");
+      await retry("DIAG GATT connect", () => device.gatt.connect(), 3, 800);
+      await sleep(800);
+    }
+    log("DIAG: device '" + (device.name || "?") + "' connected: " + device.gatt.connected);
+
+    let services = [];
+    try { services = await device.gatt.getPrimaryServices(); }
+    catch (e) { logErr("DIAG: getPrimaryServices failed", e); }
+    log("DIAG: " + services.length + " services visible");
+
+    for (const s of services) {
+      log("DIAG: service " + s.uuid);
+      let chars = [];
+      try { chars = await s.getCharacteristics(); }
+      catch (e) { logErr("DIAG:   (couldn't list characteristics)", e); continue; }
+      for (const c of chars) {
+        const p = c.properties;
+        const props = ["read", "write", "writeWithoutResponse", "notify", "indicate"]
+          .filter(k => p[k]).join("+") || "none";
+        let val = "";
+        if (p.read) {
+          try { val = " value=[" + hex(await c.readValue()) + "]"; }
+          catch (e) { val = " READ FAILED: " + e.name + " " + e.message; }
+          await sleep(150);
+        }
+        log("DIAG:   char " + c.uuid.slice(0, 8) + " props=" + props + val);
+        if (!device.gatt.connected) { logErr("DIAG: device dropped mid-survey — partial results above"); userDisconnect = false; return; }
+      }
+    }
+
+    // no-auth notification test on probe 1
+    log("DIAG: testing probe-1 notifications WITHOUT auth for 10 s…");
+    try {
+      let temp = null;
+      for (const [uuid, label] of TEMP_SERVICE_CANDIDATES) {
+        try { temp = await device.gatt.getPrimaryService(uuid); log("DIAG: temp service = " + label, "ok"); break; }
+        catch (e) { /* next */ }
+      }
+      if (!temp) throw new Error("no known temp service on this device");
+      const c = await temp.getCharacteristic(PROBE_CHARS[0]);
+      let count = 0;
+      const h = ev => { count++; if (count <= 3) log("DIAG: probe1 notify: " + hex(ev.target.value)); };
+      c.addEventListener("characteristicvaluechanged", h);
+      await c.startNotifications();
+      await sleep(10000);
+      try { await c.stopNotifications(); } catch (e) {}
+      c.removeEventListener("characteristicvaluechanged", h);
+      log("DIAG: probe1 notifications received without auth: " + count + (count ? " → NO-AUTH DATA WORKS" : " → firmware stays silent without auth"), count ? "ok" : "err");
+    } catch (e) { logErr("DIAG: notification test failed", e); }
+
+    log("======== DIAGNOSTICS END — click 'Copy log' and paste to Claude ========", "ok");
+  } catch (e) {
+    logErr("DIAG: fatal", e);
+  } finally {
+    userDisconnect = false;
+  }
+}
+
+// On load: if Chrome remembers the iGrill, label the button accordingly.
+(async () => {
+  if (navigator.bluetooth && navigator.bluetooth.getDevices) {
+    try {
+      const devs = await navigator.bluetooth.getDevices();
+      const ig = devs.find(d => (d.name || "").toLowerCase().includes("igrill")) || devs[0];
+      if (ig) {
+        $("btn-connect").textContent = "Connect to " + (ig.name || "device");
+        $("dev-name").textContent = ig.name || "--";
+        log("Chrome remembers '" + (ig.name || "(unnamed)") + "' — Connect will skip the chooser", "ok");
+      }
+    } catch (e) { /* ignore */ }
+  }
+})();
+</script>
+</body>
+</html>
