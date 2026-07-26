@@ -78,10 +78,10 @@ if ("serviceWorker" in navigator && location.protocol === "https:") {
   }
   .probe {
     background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
-    padding: 10px 12px; position: relative; overflow: hidden;
+    padding: calc(1cm + 8px) 12px 10px; position: relative; overflow: hidden;
   }
   .probe::before {
-    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1cm;
     background: var(--pc, var(--accent));
   }
   .probe h2 { font-size: 0.95rem; color: var(--muted); font-weight: 600; display:flex; align-items:center; gap:8px;}
