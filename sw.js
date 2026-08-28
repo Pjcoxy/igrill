@@ -1,5 +1,5 @@
 // Minimal service worker: network-first with cache fallback (enables PWA install + offline open)
-const CACHE = "igrill-v2";
+const CACHE = "igrill-v3";
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(["./"])));
   self.skipWaiting();

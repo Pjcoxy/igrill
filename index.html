@@ -346,6 +346,25 @@ async function retry(label, fn, attempts = 3, delay = 400) {
   }
 }
 
+// A remembered device handle goes "stale": Chrome rejects gatt.connect() instantly with
+// "Bluetooth Device is no longer in range" until it has actually SEEN the device
+// advertising in this session. Watch for an advertisement, then connect.
+function waitForAdvertisement(dev, timeoutMs) {
+  if (!dev || !dev.watchAdvertisements) return Promise.resolve(false);
+  return new Promise(resolve => {
+    let done = false;
+    const finish = ok => { if (done) return; done = true; cleanup(); resolve(ok); };
+    const onAdv = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    const cleanup = () => { clearTimeout(timer); dev.removeEventListener("advertisementreceived", onAdv); };
+    dev.addEventListener("advertisementreceived", onAdv);
+    Promise.resolve()
+      .then(() => dev.watchAdvertisements())
+      .then(() => log("Listening for the iGrill's Bluetooth signal (up to " + Math.round(timeoutMs / 1000) + " s)…"))
+      .catch(e => { logErr("Couldn't listen for advertisements", e); finish(false); });
+  });
+}
+
 const f2c = f => (f - 32) * 5 / 9;
 const c2f = c => c * 9 / 5 + 32;
 const disp = f => unit === "F" ? Math.round(f) : Math.round(f2c(f));
@@ -468,7 +487,22 @@ async function connect(forcePicker) {
         reconnectAttempts = 0;
         userDisconnect = false;
         setConn("busy", "Connecting…");
-        await setup();
+        try {
+          await setup();
+        } catch (e) {
+          if (!/no longer in range|not in range/i.test(e.message || "")) throw e;
+          logErr("Stale device handle — Chrome hasn't seen the iGrill yet this session. Scanning for it…");
+          setConn("busy", "Searching for iGrill…");
+          const seen = await waitForAdvertisement(device, 25000);
+          if (seen) {
+            log("iGrill spotted — connecting", "ok");
+            await setup();
+          } else {
+            logErr("❌ No signal from the iGrill in 25 s. Check: is it switched ON? Is your phone (or another app) connected to it? Are the batteries good? Is it within a few metres?");
+            logErr("→ If it IS on and nearby, click 'Change device' — that forces a fresh scan.");
+            setConn("off", "iGrill not found");
+          }
+        }
         return;
       }
       log("No remembered device — opening Chrome's device chooser (one-time)");
