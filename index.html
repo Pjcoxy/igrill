@@ -181,6 +181,8 @@ if ("serviceWorker" in navigator && location.protocol === "https:") {
   <button id="btn-connect" onclick="connect()">Connect</button>
   <button id="btn-pick" class="secondary" onclick="connect(true)" title="Open Chrome's device chooser to pick a different device">Change device</button>
   <button id="btn-diag" class="secondary" onclick="runDiagnostics()" title="Full GATT survey — logs everything the device exposes">Diagnostics</button>
+  <span class="pill" id="cloud-pill" title="Cloud sync">☁️ <span id="cloud-state">off</span></span>
+  <button id="btn-cook" class="secondary" onclick="toggleCook()" title="Start or stop uploading this cook to iGrill Cloud">Start cook</button>
   <button id="btn-disconnect" class="secondary" onclick="disconnect()" disabled>Disconnect</button>
 </header>
 
@@ -1025,6 +1027,117 @@ document.addEventListener("visibilitychange", async () => {
 
 window.addEventListener("error", e => logErr("Uncaught error", e.error || { name: "Error", message: e.message }));
 window.addEventListener("unhandledrejection", e => logErr("Unhandled promise rejection", e.reason || { name: "Error", message: String(e.reason) }));
+// ---- cloud sync (gateway mode) --------------------------------------
+// Pushes readings to iGrill Cloud so a cook can be watched from anywhere.
+// The access code is entered once and kept in localStorage only — this page
+// is published publicly, so the code must never be committed.
+const CLOUD_API = "https://igrill-api-prod.azurewebsites.net";
+let cloudCode = "", cloudCookId = null, cloudCookName = "";
+let cloudQueue = [], cloudSending = false, cloudFails = 0, cloudLastOk = 0;
+try {
+  cloudCode = localStorage.getItem("igrill_cloud_code") || "";
+  cloudCookId = localStorage.getItem("igrill_cloud_cook") || null;
+  cloudCookName = localStorage.getItem("igrill_cloud_name") || "";
+} catch (e) { /* private mode */ }
+
+function cloudHeaders() {
+  return { "content-type": "application/json", "x-igrill-code": cloudCode };
+}
+
+function updateCloudUi() {
+  const el = $("cloud-state"), btn = $("btn-cook");
+  if (!el || !btn) return;
+  if (!cloudCookId) { el.textContent = "off"; btn.textContent = "Start cook"; return; }
+  btn.textContent = "Stop cook";
+  if (cloudFails > 2) el.textContent = "retrying · " + cloudQueue.length + " queued";
+  else if (cloudQueue.length) el.textContent = "syncing · " + cloudQueue.length;
+  else el.textContent = cloudLastOk ? "live" : "waiting";
+}
+
+function askCloudCode() {
+  const entered = prompt("iGrill Cloud access code");
+  if (entered === null) return false;
+  cloudCode = entered.trim();
+  try { localStorage.setItem("igrill_cloud_code", cloudCode); } catch (e) {}
+  return !!cloudCode;
+}
+
+async function toggleCook() {
+  if (cloudCookId) return cloudStopCook();
+  if (!cloudCode && !askCloudCode()) return;
+  const name = (prompt("Name this cook", cloudCookName || "Cook") || "").trim() || "Cook";
+  try {
+    const res = await fetch(CLOUD_API + "/api/cooks", { method: "POST", headers: cloudHeaders(), body: JSON.stringify({ name: name }) });
+    if (res.status === 401) {
+      logErr("Cloud: that access code was rejected");
+      cloudCode = ""; try { localStorage.removeItem("igrill_cloud_code"); } catch (e) {}
+      return;
+    }
+    if (!res.ok) throw new Error("http " + res.status);
+    const cook = await res.json();
+    cloudCookId = cook.cookId; cloudCookName = cook.name;
+    cloudFails = 0; cloudLastOk = 0; cloudQueue = [];
+    try {
+      localStorage.setItem("igrill_cloud_cook", cloudCookId);
+      localStorage.setItem("igrill_cloud_name", cloudCookName);
+    } catch (e) {}
+    log("Cloud: cook '" + cook.name + "' started — now visible on the remote dashboard", "ok");
+  } catch (e) { logErr("Cloud: couldn't start the cook", e); }
+  updateCloudUi();
+}
+
+async function cloudStopCook() {
+  const id = cloudCookId;
+  await cloudFlush();
+  try {
+    await fetch(CLOUD_API + "/api/cooks/" + id + "/stop", { method: "POST", headers: cloudHeaders() });
+    log("Cloud: cook stopped", "ok");
+  } catch (e) { logErr("Cloud: stop failed — it will still show as running", e); }
+  cloudCookId = null; cloudQueue = [];
+  try { localStorage.removeItem("igrill_cloud_cook"); } catch (e) {}
+  updateCloudUi();
+}
+
+// One snapshot every 10s while a cook is running. The probes notify far more
+// often than that and the cloud does not need every wobble.
+function cloudSnapshot() {
+  if (!cloudCookId) return;
+  const probes = [];
+  for (let i = 0; i < 4; i++) {
+    if (probeState[i] !== null && probeState[i] !== undefined) {
+      probes.push({ probe: i + 1, f: Math.round(probeState[i] * 10) / 10 });
+    }
+  }
+  if (!probes.length) return;
+  cloudQueue.push({ ts: new Date().toISOString(), probes: probes });
+  if (cloudQueue.length > 600) cloudQueue.splice(0, cloudQueue.length - 600);
+  updateCloudUi();
+}
+
+// Queued readings survive a network drop and flush when it comes back.
+async function cloudFlush() {
+  if (!cloudCookId || cloudSending || !cloudQueue.length) return;
+  cloudSending = true;
+  const batch = cloudQueue.slice(0, 200);
+  try {
+    const res = await fetch(CLOUD_API + "/api/cooks/" + cloudCookId + "/readings", {
+      method: "POST", headers: cloudHeaders(), body: JSON.stringify({ readings: batch })
+    });
+    if (!res.ok) throw new Error("http " + res.status);
+    cloudQueue.splice(0, batch.length);
+    cloudLastOk = Date.now(); cloudFails = 0;
+  } catch (e) {
+    cloudFails++;
+    if (cloudFails === 1 || cloudFails % 10 === 0) logErr("Cloud: upload failed, queued for retry", e);
+  }
+  cloudSending = false;
+  updateCloudUi();
+}
+
+setInterval(cloudSnapshot, 10000);
+setInterval(cloudFlush, 15000);
+updateCloudUi();
+
 log(sysInfo());
 
 // ---- session persistence: graph/targets/timer survive reloads & restarts ----
